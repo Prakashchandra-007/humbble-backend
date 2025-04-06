@@ -1,12 +1,15 @@
+// src/auth/auth.service.ts
+
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class AuthService {
-  private supabase;
+  private supabase: SupabaseClient;
 
   constructor(
     private jwtService: JwtService,
@@ -16,6 +19,28 @@ export class AuthService {
       configService.get<string>('supabase.url')!,
       configService.get<string>('supabase.anonKey')!,
     );
+  }
+
+  async register(dto: RegisterDto) {
+    const { email, password } = dto;
+
+    if (!email || !password) {
+      throw new UnauthorizedException('Email and password are required');
+    }
+
+    const { data, error } = await this.supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new UnauthorizedException(error.message);
+    }
+
+    return {
+      message: 'User registered successfully',
+      user: data.user,
+    };
   }
 
   async signIn(loginDto: LoginDto) {
@@ -37,12 +62,16 @@ export class AuthService {
   }
 
   async signInWithGoogle(token: string) {
-    const { data, error } = await this.supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { accessToken: token },
-    });
+    // Instead of trying to sign in directly, just verify the token
+    const { data, error } = await this.supabase.auth.getUser(token);
 
-    if (error) throw new UnauthorizedException('Google login failed');
-    return data;
+    if (error || !data.user) {
+      throw new UnauthorizedException('Google token invalid or expired');
+    }
+
+    return {
+      message: 'Google login verified',
+      user: data.user,
+    };
   }
 }

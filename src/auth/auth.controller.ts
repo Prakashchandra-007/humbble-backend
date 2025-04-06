@@ -1,9 +1,12 @@
-import { Body, Controller, Post } from '@nestjs/common';
+// src/auth/auth.controller.ts
+import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { ApiTags } from '@nestjs/swagger';
+import { RegisterDto } from './dto/register.dto';
+import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { PublicGuard } from 'src/common/guards/public.guard';
 
-@ApiTags('Auth') // <--- This shows "Auth" group in Swagger UI
+@ApiTags('Auth') // Groups under "Auth" in Swagger UI
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -16,5 +19,12 @@ export class AuthController {
   @Post('oauth/google')
   google(@Body('token') token: string) {
     return this.authService.signInWithGoogle(token);
+  }
+
+  @UseGuards(PublicGuard) // Optional: allows public access if guard is implemented
+  @Post('register')
+  @ApiBody({ type: RegisterDto })
+  async register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
   }
 }
