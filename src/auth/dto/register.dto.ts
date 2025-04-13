@@ -8,6 +8,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { IsValidPhoneWithCountry } from 'src/common/decorators/is-valid-phone.decorator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'Prakash Muduli' })
@@ -20,7 +21,9 @@ export class RegisterDto {
   readonly email?: string;
 
   @ApiPropertyOptional({ example: '+919876543210' })
-  @IsPhoneNumber()
+  @IsValidPhoneWithCountry(['IN', 'US', 'GB'], {
+    message: 'Phone number must be valid and from supported countries',
+  })
   @IsOptional()
   readonly phone?: string;
 
