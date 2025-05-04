@@ -1,10 +1,10 @@
 {
   "name": "humbble-backend",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "version": "0.1.0",
+  "description": "Humbble is an open-source dating app designed to help people connect meaningfully. Built with modern web technologies, it provides secure authentication, profile management, and user discovery features with a focus on privacy and simplicity.",
+  "author": "humbble open source",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
