@@ -1,5 +1,6 @@
 import {
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -56,7 +57,7 @@ export class UsersService {
       { token: accessToken },
     );
 
-    if (error) throw new Error(error.message);
+    if (error) throw new InternalServerErrorException(error.message);
 
     return {
       message: 'Profile updated successfully',
@@ -76,7 +77,9 @@ export class UsersService {
     const { data, error } = await this.adminClient.auth.admin.listUsers();
 
     if (error) {
-      throw new Error('Failed to fetch users: ' + error.message);
+      throw new InternalServerErrorException(
+        'Failed to fetch users: ' + error.message,
+      );
     }
     return data.users.map((user) => ({
       id: user.id,
@@ -117,7 +120,7 @@ export class UsersService {
       },
     });
 
-    if (error) throw new Error(error.message);
+    if (error) throw new InternalServerErrorException(error.message);
     return data.user;
   }
 
@@ -139,7 +142,7 @@ export class UsersService {
       },
     );
 
-    if (error) throw new Error(error.message);
+    if (error) throw new InternalServerErrorException(error.message);
     return {
       message: 'Profile updated successfully',
       data: {
@@ -156,7 +159,7 @@ export class UsersService {
 
   async deleteUserById(id: string) {
     const { data, error } = await this.adminClient.auth.admin.deleteUser(id);
-    if (error) throw new Error(error.message);
+    if (error) throw new InternalServerErrorException(error.message);
     return { message: 'User deleted successfully', data };
   }
 }

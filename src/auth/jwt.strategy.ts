@@ -23,7 +23,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const token = authHeader.split(' ')[1];
     const { email, phone } = payload;
 
-    const role = payload.user_metadata.role;
+    const role = payload.user_metadata?.role;
     return {
       userId: payload.sub,
       email: email,
