@@ -15,4 +15,8 @@ export class UpdateUserDto {
     message: 'Phone number must be valid and from supported countries',
   })
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  gender?: string;
 }
