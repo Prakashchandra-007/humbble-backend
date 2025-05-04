@@ -1,60 +1,3 @@
-// import {
-//   Controller,
-//   Get,
-//   Post,
-//   Patch,
-//   Delete,
-//   Param,
-//   Body,
-//   UseGuards,
-//   Request,
-//   Headers,
-//   UnauthorizedException,
-//   ForbiddenException,
-// } from '@nestjs/common';
-// import { UsersService } from './users.service';
-// import { UpdateUserDto } from './dto/update-user.dto';
-// import { CreateUserDto } from './dto/create-user.dto';
-// import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
-// import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-
-// @ApiTags('Users')
-// @ApiBearerAuth()
-// @UseGuards(JwtAuthGuard)
-// @Controller('users')
-// export class UsersController {
-//   constructor(private readonly usersService: UsersService) {}
-
-//   // GET /users
-//   @UseGuards(JwtAuthGuard)
-//   @Get()
-//   getAllUsers(@Request() req) {
-//     console.log(req.user.userRole, 'eq.user.role');
-//     // if (req.user.userRole !== 'admin') {
-//     //   throw new ForbiddenException('Access denied');
-//     // }
-
-//     return this.usersService.getAllUsers();
-//   }
-
-//   // POST /users
-//   @Post()
-//   createUser(@Body() dto: CreateUserDto) {
-//     return this.usersService.createUser(dto);
-//   }
-
-//   // PATCH /users/:id
-//   @Patch(':id')
-//   updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-//     return this.usersService.updateUserById(id, dto);
-//   }
-
-//   // DELETE /users/:id
-//   @Delete(':id')
-//   deleteUser(@Param('id') id: string) {
-//     return this.usersService.deleteUserById(id);
-//   }
-// }
 import {
   Controller,
   Get,
@@ -65,8 +8,6 @@ import {
   Body,
   UseGuards,
   Request,
-  UnauthorizedException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
