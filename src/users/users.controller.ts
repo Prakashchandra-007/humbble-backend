@@ -8,6 +8,7 @@ import {
   Body,
   UseGuards,
   Request,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -38,6 +39,9 @@ export class UsersController {
     description: 'Successfully retrieved all users.',
   })
   getAllUsers(@Request() req) {
+    if (req.user.userRole !== 'admin') {
+      throw new ForbiddenException('Access denied');
+    }
     return this.usersService.getAllUsers();
   }
 

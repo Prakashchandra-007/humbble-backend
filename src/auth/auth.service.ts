@@ -22,7 +22,7 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const { email, password, name, phone } = dto;
+    const { email, password } = dto;
 
     if (!email || !password) {
       throw new UnauthorizedException('Email and password are required');

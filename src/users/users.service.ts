@@ -90,7 +90,6 @@ export class UsersService {
   }
   async getUserById(id: string) {
     const { data, error } = await this.adminClient.auth.admin.getUserById(id);
-    console.log(data, 'data');
 
     if (error || !data.user) {
       throw new NotFoundException('User not found');
