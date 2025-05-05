@@ -32,6 +32,7 @@ export class UsersController {
    * Get all users (only accessible by authenticated users)
    * @returns List of users
    */
+  @UseGuards(JwtAuthGuard)
   @Get()
   @ApiOperation({ summary: 'Retrieve all users' })
   @ApiResponse({
