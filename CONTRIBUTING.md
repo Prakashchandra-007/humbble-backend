@@ -21,7 +21,7 @@ Welcome to **Humbble** — an open-source backend project for a dating app built
 
 ```bash
 npm install
-````
+```
 
 ### 2. Set up Supabase
 
@@ -128,10 +128,3 @@ We follow the [Contributor Covenant](https://www.contributor-covenant.org/versio
 ---
 
 Let’s build **Humbble** together — where quality meets connection ❤️
-
-```
-
----
-
-Would you also like help generating a `README.md` or GitHub templates (`ISSUE_TEMPLATE`, `PULL_REQUEST_TEMPLATE`) for better repo maintainability?
-```
