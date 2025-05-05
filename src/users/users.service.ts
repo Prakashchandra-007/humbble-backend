@@ -8,7 +8,10 @@ import { ConfigService } from '@nestjs/config';
 import { createClient } from '@supabase/supabase-js';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
-
+interface UpdateFields {
+  phone?: string;
+  email?: string;
+}
 @Injectable()
 export class UsersService {
   private supabase;
@@ -40,7 +43,7 @@ export class UsersService {
     if (userError || !userData.user)
       throw new UnauthorizedException('Invalid token');
 
-    const updateFields: any = {};
+    const updateFields: UpdateFields = {};
     if (updateDto.email) updateFields.email = updateDto.email;
     if (updateDto.phone) updateFields.phone = updateDto.phone;
 
