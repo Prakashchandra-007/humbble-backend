@@ -12,6 +12,10 @@ interface UpdateFields {
   phone?: string;
   email?: string;
 }
+interface MetaData {
+  name?: string;
+  gender?: string;
+}
 @Injectable()
 export class UsersService {
   private supabase;
@@ -128,11 +132,11 @@ export class UsersService {
   }
 
   async updateUserById(id: string, dto: UpdateUserDto) {
-    const updateFields: any = {};
+    const updateFields: UpdateFields = {};
     if (dto.email) updateFields.email = dto.email;
     if (dto.phone) updateFields.phone = dto.phone;
 
-    const metadata: any = {};
+    const metadata: MetaData = {};
     if (dto.name) metadata.name = dto.name;
     if (dto.gender) metadata.gender = dto.gender;
 
