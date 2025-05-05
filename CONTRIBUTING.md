@@ -114,11 +114,8 @@ Check the [issues](../../issues) section to find open tasks.
 This project currently uses:
 
 ```json
-"license": "UNLICENSED"
+"license": "MIT"
 ```
-
-If you plan to change it to MIT or another open-source license, please discuss via an issue or pull request.
-
 ---
 
 ## 📜 Code of Conduct
