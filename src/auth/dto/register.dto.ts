@@ -3,10 +3,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
   IsOptional,
-  IsPhoneNumber,
   IsString,
   MinLength,
-  ValidateIf,
+  IsIn,
 } from 'class-validator';
 import { IsValidPhoneWithCountry } from 'src/common/decorators/is-valid-phone.decorator';
 
@@ -31,4 +30,14 @@ export class RegisterDto {
   @IsString()
   @MinLength(6)
   readonly password: string;
+
+  @ApiPropertyOptional({
+    example: 'user',
+    description: 'User role: admin or user',
+    enum: ['admin', 'user'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['admin', 'user'])
+  readonly role?: string;
 }

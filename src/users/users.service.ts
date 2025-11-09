@@ -5,168 +5,316 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createClient } from '@supabase/supabase-js';
+import { DatabaseService } from '../database/database.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { JwtService } from '@nestjs/jwt';
+import { JwtPayload, UserWithoutPassword } from '../types/user.types';
+import * as bcrypt from 'bcrypt';
+import { LoggerService } from '../common/logger/logger.service';
+
 interface UpdateFields {
   phone?: string;
   email?: string;
-}
-interface MetaData {
   name?: string;
   gender?: string;
 }
+
 @Injectable()
 export class UsersService {
-  private supabase;
-  private adminClient;
+  private readonly SALT_ROUNDS = 12; // Increased from 10 for better security
 
-  constructor(private configService: ConfigService) {
-    this.supabase = createClient(
-      configService.get<string>('supabase.url')!,
-      configService.get<string>('supabase.anonKey')!,
-    );
+  constructor(
+    private configService: ConfigService,
+    private databaseService: DatabaseService,
+    private jwtService: JwtService,
+    private loggerService: LoggerService,
+  ) {}
 
-    // Create an admin client with Service Role Key (DO NOT expose to frontend)
-    this.adminClient = createClient(
-      configService.get<string>('supabase.url')!,
-      configService.get<string>('supabase.serviceRoleKey')!,
-    );
+  // Helper method for consistent password hashing across the service
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, this.SALT_ROUNDS);
   }
 
   async getMe(accessToken: string) {
-    const { data, error } = await this.supabase.auth.getUser(accessToken);
-    if (error || !data.user) throw new UnauthorizedException('Invalid token');
-    return data.user;
+    try {
+      // Verify and decode JWT token
+      const decoded = this.jwtService.verify(accessToken) as JwtPayload;
+      const userId = decoded.sub;
+
+      // Find user by ID (excluding password for security)
+      const user = await this.databaseService.findOneExcluding(
+        'users',
+        { id: userId },
+        ['password'],
+      );
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phone: user.phone,
+        gender: user.gender,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to get user profile',
+        error,
+        'UsersService.getMe',
+      );
+      throw new UnauthorizedException('Invalid token');
+    }
   }
 
   async updateMe(accessToken: string, updateDto: UpdateUserDto) {
-    const { data: userData, error: userError } =
-      await this.supabase.auth.getUser(accessToken);
+    try {
+      // Verify and decode JWT token
+      const decoded = this.jwtService.verify(accessToken);
+      const userId = decoded.sub;
 
-    if (userError || !userData.user)
-      throw new UnauthorizedException('Invalid token');
+      // Find user by ID
+      const user = await this.databaseService.findOne('users', { id: userId });
 
-    const updateFields: UpdateFields = {};
-    if (updateDto.email) updateFields.email = updateDto.email;
-    if (updateDto.phone) updateFields.phone = updateDto.phone;
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
 
-    const userMetadata: Record<string, any> = {};
-    if (updateDto.name) userMetadata.name = updateDto.name;
-    if (updateDto.gender) userMetadata.gender = updateDto.gender;
+      // Prepare update fields
+      const updateFields: UpdateFields = {};
+      if (updateDto.email) updateFields.email = updateDto.email.toLowerCase();
+      if (updateDto.phone) updateFields.phone = updateDto.phone;
+      if (updateDto.name) updateFields.name = updateDto.name;
+      if (updateDto.gender) updateFields.gender = updateDto.gender;
 
-    const { data, error } = await this.supabase.auth.updateUser(
-      {
-        email: updateFields.email,
-        phone: updateFields.phone,
-        data: userMetadata,
-      },
-      { token: accessToken },
-    );
+      // Note: updated_at is automatically set by database trigger
 
-    if (error) throw new InternalServerErrorException(error.message);
-
-    return {
-      message: 'Profile updated successfully',
-      data: {
-        id: data.user.id,
-        email: data.user.email,
-        phone: data.user.phone,
-        name: data.user.user_metadata?.name,
-        gender: data.user.user_metadata?.gender,
-        created_at: data.user.created_at,
-        updated_at: data.user.updated_at,
-      },
-    };
-  }
-
-  async getAllUsers() {
-    const { data, error } = await this.adminClient.auth.admin.listUsers();
-
-    if (error) {
-      throw new InternalServerErrorException(
-        'Failed to fetch users: ' + error.message,
+      // Update user
+      const updatedUser = await this.databaseService.updateOne(
+        'users',
+        updateFields,
+        { id: userId },
       );
-    }
-    return data.users.map((user) => ({
-      id: user.id,
-      email: user.email,
-      phone: user.phone,
-      name: user.user_metadata?.name,
-      gender: user.user_metadata?.gender,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
-    }));
-  }
-  async getUserById(id: string) {
-    const { data, error } = await this.adminClient.auth.admin.getUserById(id);
 
-    if (error || !data.user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return {
-      id: data.user.id,
-      email: data.user.email,
-      phone: data.user.phone,
-      name: data.user.user_metadata?.name,
-      gender: data.user.user_metadata?.gender,
-      created_at: data.user.created_at,
-      updated_at: data.user.updated_at,
-    };
-  }
-  async createUser(dto: CreateUserDto) {
-    const { data, error } = await this.supabase.auth.signUp({
-      email: dto.email,
-      password: dto.password,
-      options: {
+      return {
+        message: 'Profile updated successfully',
         data: {
-          name: dto.name,
-          phone: dto.phone,
+          id: updatedUser.id,
+          email: updatedUser.email,
+          phone: updatedUser.phone,
+          name: updatedUser.name,
+          gender: updatedUser.gender,
+          created_at: updatedUser.created_at,
+          updated_at: updatedUser.updated_at,
         },
-      },
-    });
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to update user profile',
+        error,
+        'UsersService.updateMe',
+      );
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update profile');
+    }
+  }
 
-    if (error) throw new InternalServerErrorException(error.message);
-    return data.user;
+  async getAllUsers(): Promise<{
+    message: string;
+    users: UserWithoutPassword[];
+  }> {
+    try {
+      const users = await this.databaseService.query(
+        'SELECT id, email, name, phone, gender, role, created_at, updated_at FROM users ORDER BY created_at DESC',
+      );
+
+      return {
+        message: 'Users retrieved successfully',
+        users: users as UserWithoutPassword[],
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to retrieve all users',
+        error,
+        'UsersService.getAllUsers',
+      );
+      throw new InternalServerErrorException('Failed to retrieve users');
+    }
+  }
+
+  async getUserById(id: string) {
+    try {
+      const user = await this.databaseService.findOneExcluding(
+        'users',
+        { id: parseInt(id) },
+        ['password'],
+      );
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return {
+        message: 'User retrieved successfully',
+        data: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          phone: user.phone,
+          gender: user.gender,
+          created_at: user.created_at,
+          updated_at: user.updated_at,
+        },
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to retrieve user by ID',
+        error,
+        'UsersService.getUserById',
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to retrieve user');
+    }
+  }
+
+  async createUser(dto: CreateUserDto) {
+    try {
+      // Check if user already exists
+      const existingUser = await this.databaseService.findOne('users', {
+        email: dto.email.toLowerCase(),
+      });
+
+      if (existingUser) {
+        throw new UnauthorizedException('User already exists with this email');
+      }
+
+      // Ensure password is provided
+      if (!dto.password) {
+        throw new UnauthorizedException('Password is required');
+      }
+
+      // Hash password using helper method
+      const hashedPassword = await this.hashPassword(dto.password);
+
+      const newUser = await this.databaseService.insertOne('users', {
+        email: dto.email.toLowerCase(),
+        password: hashedPassword,
+        name: dto.name || null,
+        phone: dto.phone || null,
+        gender: dto.gender || null,
+        role: dto.role || 'user',
+        // Note: created_at and updated_at are set by database defaults/triggers
+      });
+
+      return {
+        message: 'User created successfully',
+        data: {
+          id: newUser.id,
+          email: newUser.email,
+          name: newUser.name,
+          phone: newUser.phone,
+          gender: newUser.gender,
+          role: newUser.role,
+          created_at: newUser.created_at,
+        },
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to create user',
+        error,
+        'UsersService.createUser',
+      );
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to create user');
+    }
   }
 
   async updateUserById(id: string, dto: UpdateUserDto) {
-    const updateFields: UpdateFields = {};
-    if (dto.email) updateFields.email = dto.email;
-    if (dto.phone) updateFields.phone = dto.phone;
+    try {
+      const user = await this.databaseService.findOne('users', {
+        id: parseInt(id),
+      });
 
-    const metadata: MetaData = {};
-    if (dto.name) metadata.name = dto.name;
-    if (dto.gender) metadata.gender = dto.gender;
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-    const { data, error } = await this.adminClient.auth.admin.updateUserById(
-      id,
-      {
-        email: updateFields.email,
-        phone: updateFields.phone,
-        user_metadata: metadata,
-      },
-    );
+      const updateFields: UpdateFields = {};
+      if (dto.email) updateFields.email = dto.email.toLowerCase();
+      if (dto.phone) updateFields.phone = dto.phone;
+      if (dto.name) updateFields.name = dto.name;
+      if (dto.gender) updateFields.gender = dto.gender;
 
-    if (error) throw new InternalServerErrorException(error.message);
-    return {
-      message: 'Profile updated successfully',
-      data: {
-        id: data.user.id,
-        email: data.user.email,
-        phone: data.user.phone,
-        name: data.user.user_metadata?.name,
-        gender: data.user.user_metadata?.gender,
-        created_at: data.user.created_at,
-        updated_at: data.user.updated_at,
-      },
-    };
+      // Note: updated_at is automatically set by database trigger
+
+      const updatedUser = await this.databaseService.updateOne(
+        'users',
+        updateFields,
+        { id: parseInt(id) },
+      );
+
+      return {
+        message: 'User updated successfully',
+        data: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          gender: updatedUser.gender,
+          updated_at: updatedUser.updated_at,
+        },
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to update user by ID',
+        error,
+        'UsersService.updateUserById',
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to update user');
+    }
   }
 
   async deleteUserById(id: string) {
-    const { data, error } = await this.adminClient.auth.admin.deleteUser(id);
-    if (error) throw new InternalServerErrorException(error.message);
-    return { message: 'User deleted successfully', data };
+    try {
+      const user = await this.databaseService.findOne('users', {
+        id: parseInt(id),
+      });
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      await this.databaseService.query('DELETE FROM users WHERE id = $1', [
+        parseInt(id),
+      ]);
+
+      return {
+        message: 'User deleted successfully',
+      };
+    } catch (error) {
+      this.loggerService.error(
+        'Failed to delete user',
+        error,
+        'UsersService.deleteUserById',
+      );
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Failed to delete user');
+    }
   }
 }

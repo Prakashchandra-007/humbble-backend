@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { DatabaseModule } from './database/database.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -14,6 +15,7 @@ import configuration from './config/configuration';
       envFilePath: `env/.${process.env.NODE_ENV}.env`,
       // envFilePath: [`env/.env.${process.env.NODE_ENV || 'development'}`],
     }),
+    DatabaseModule,
     AuthModule,
     UsersModule,
   ],

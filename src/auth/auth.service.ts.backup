@@ -3,11 +3,28 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { DatabaseService } from '../database/database.service';
-import * as bcrypt from 'bcrypt';
+import { DatabaseService } from '../database/database.serv      const tokenInfo = (await response.json()) as GoogleTokenInfo;
+
+      // Get user profile from Google
+      const profileResponse = await fetch(
+        `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${token}`,
+      );
+
+      if (!profileResponse.ok) {
+        throw new Error('Failed to get user profile from Google');
+      }
+
+      const profile = (await profileResponse.json()) as GoogleUserProfile;
+
+      return {
+        email: profile.email,
+        name: profile.name || undefined,
+        picture: profile.picture || undefined,
+        sub: profile.id,
+      };crypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { UserWithoutPassword } from '../types/user.types';
+import { JwtPayload, User, UserWithoutPassword } from '../types/user.types';
 import { LoggerService } from '../common/logger/logger.service';
 
 // Google OAuth API response types for type safety
@@ -41,16 +58,15 @@ export class AuthService {
     private loggerService: LoggerService,
   ) {}
 
-  // Helper method to hash passwords with consistent salt rounds
-  private async hashPassword(password: string): Promise<string> {
-    return bcrypt.hash(password, this.SALT_ROUNDS);
+  // Helper method to safely exclude password from user objects
+  private excludePassword(user: any): UserWithoutPassword {
+    const { password, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 
-  // Helper to safely exclude password from user objects
-  private excludePassword(user: any): UserWithoutPassword {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, ...userWithoutPassword } = user;
-    return userWithoutPassword as UserWithoutPassword;
+  // Helper method for consistent password hashing
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, this.SALT_ROUNDS);
   }
 
   async register(dto: RegisterDto) {
@@ -115,63 +131,57 @@ export class AuthService {
   async signIn(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
-    try {
-      // Use findUserByEmail which returns the complete UserRow including password for validation
-      const user = await this.databaseService.findUserByEmail(
-        email.toLowerCase(),
-      );
-
-      if (!user) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-
-      // Compare passwords
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-
-      if (!isPasswordValid) {
-        throw new UnauthorizedException('Invalid credentials');
-      }
-
-      // Create JWT payload
-      const payload = {
-        sub: user.id,
-        email: user.email,
-        user_metadata: { role: user.role },
-      };
-
-      const accessToken = this.jwtService.sign(payload);
-
-      this.loggerService.logAuthEvent('User signed in', user.id.toString(), {
-        email: user.email,
-      });
-
-      return {
-        message: 'Sign in successful',
-        user: this.excludePassword(user),
-        accessToken,
-      };
-    } catch (error) {
-      this.loggerService.error('Sign in failed', error, 'AuthService.signIn');
-      throw error;
+    if (!email || !password) {
+      throw new UnauthorizedException('Email and password are required');
     }
+
+    // Find user by email
+    const user = await this.databaseService.findOne('users', {
+      email: email.toLowerCase(),
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Generate JWT token with role
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      user_metadata: { role: user.role },
+    };
+    const accessToken = this.jwtService.sign(payload);
+
+    return {
+      accessToken,
+      user: this.excludePassword(user),
+    };
   }
 
   async signInWithGoogle(token: string) {
+    // Feature flag to enable/disable Google OAuth
+    const googleOAuthEnabled =
+      this.configService.get<string>('GOOGLE_OAUTH_ENABLED') === 'true';
+
+    if (!googleOAuthEnabled) {
+      throw new UnauthorizedException('Google OAuth is currently disabled');
+    }
+
+    if (!token) {
+      throw new UnauthorizedException('Google token is required');
+    }
+
     try {
-      // Check if Google OAuth is enabled
-      const isGoogleOAuthEnabled = this.configService.get<boolean>(
-        'ENABLE_GOOGLE_OAUTH',
-        false,
-      );
-
-      if (!isGoogleOAuthEnabled) {
-        throw new UnauthorizedException('Google OAuth is disabled');
-      }
-
-      // Verify Google token and get user info
+      // Verify the Google token with Google's servers
       const googleUser = await this.verifyGoogleToken(token);
 
-      if (!googleUser) {
+      if (!googleUser || !googleUser.email) {
         throw new UnauthorizedException('Invalid Google token');
       }
 
@@ -188,7 +198,7 @@ export class AuthService {
           // Note: created_at and updated_at are set by database defaults/triggers
         };
 
-        await this.databaseService.createUser(newUserData);
+        const insertResult = await this.databaseService.createUser(newUserData);
 
         // Fetch the complete user record
         user = await this.databaseService.findUserByEmail(googleUser.email);
@@ -225,14 +235,15 @@ export class AuthService {
       };
     } catch (error) {
       this.loggerService.error(
-        'Google OAuth sign in failed',
+        'Google OAuth authentication failed',
         error,
         'AuthService.signInWithGoogle',
       );
-      throw error;
+      throw new UnauthorizedException('Google OAuth authentication failed');
     }
   }
 
+  // Helper method to verify Google token
   private async verifyGoogleToken(token: string): Promise<{
     email: string;
     name?: string;
@@ -240,7 +251,7 @@ export class AuthService {
     sub: string;
   } | null> {
     try {
-      // Verify token with Google
+      // Option 1: Use Google's token info endpoint (simpler but requires network call)
       const response = await fetch(
         `https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${token}`,
       );
@@ -249,8 +260,7 @@ export class AuthService {
         throw new Error('Failed to verify token with Google');
       }
 
-      // We could validate additional token info here if needed
-      (await response.json()) as GoogleTokenInfo;
+      const tokenInfo = await response.json() as GoogleTokenInfo;
 
       // Get user profile from Google
       const profileResponse = await fetch(
@@ -261,12 +271,12 @@ export class AuthService {
         throw new Error('Failed to get user profile from Google');
       }
 
-      const profile = (await profileResponse.json()) as GoogleUserProfile;
+      const profile = await profileResponse.json() as GoogleUserProfile;
 
       return {
         email: profile.email,
-        name: profile.name,
-        picture: profile.picture,
+        name: profile.name || null,
+        picture: profile.picture || null,
         sub: profile.id,
       };
     } catch (error) {

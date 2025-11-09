@@ -7,7 +7,7 @@ import { DatabaseService } from '../database/database.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { UserWithoutPassword } from '../types/user.types';
+import { JwtPayload, User, UserWithoutPassword } from '../types/user.types';
 import { LoggerService } from '../common/logger/logger.service';
 
 // Google OAuth API response types for type safety
@@ -48,7 +48,6 @@ export class AuthService {
 
   // Helper to safely exclude password from user objects
   private excludePassword(user: any): UserWithoutPassword {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword as UserWithoutPassword;
   }
@@ -249,8 +248,7 @@ export class AuthService {
         throw new Error('Failed to verify token with Google');
       }
 
-      // We could validate additional token info here if needed
-      (await response.json()) as GoogleTokenInfo;
+      const tokenInfo = (await response.json()) as GoogleTokenInfo;
 
       // Get user profile from Google
       const profileResponse = await fetch(
