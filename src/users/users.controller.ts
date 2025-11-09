@@ -20,6 +20,7 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AuthenticatedRequest } from '../types/user.types';
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -39,7 +40,7 @@ export class UsersController {
     status: 200,
     description: 'Successfully retrieved all users.',
   })
-  getAllUsers(@Request() req) {
+  getAllUsers(@Request() req: AuthenticatedRequest) {
     if (req.user.userRole !== 'admin') {
       throw new ForbiddenException('Access denied');
     }
