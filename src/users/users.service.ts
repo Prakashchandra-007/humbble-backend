@@ -9,23 +9,32 @@ import { DatabaseService } from '../database/database.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { JwtService } from '@nestjs/jwt';
-import { JwtPayload } from '../types/user.types';
+import { JwtPayload, UserWithoutPassword } from '../types/user.types';
+import * as bcrypt from 'bcrypt';
+import { LoggerService } from '../common/logger/logger.service';
 
 interface UpdateFields {
   phone?: string;
   email?: string;
   name?: string;
   gender?: string;
-  updated_at?: Date;
 }
 
 @Injectable()
 export class UsersService {
+  private readonly SALT_ROUNDS = 12; // Increased from 10 for better security
+
   constructor(
     private configService: ConfigService,
     private databaseService: DatabaseService,
     private jwtService: JwtService,
+    private loggerService: LoggerService,
   ) {}
+
+  // Helper method for consistent password hashing across the service
+  private async hashPassword(password: string): Promise<string> {
+    return bcrypt.hash(password, this.SALT_ROUNDS);
+  }
 
   async getMe(accessToken: string) {
     try {
@@ -33,8 +42,12 @@ export class UsersService {
       const decoded = this.jwtService.verify(accessToken) as JwtPayload;
       const userId = decoded.sub;
 
-      // Find user by ID
-      const user = await this.databaseService.findOne('users', { id: userId });
+      // Find user by ID (excluding password for security)
+      const user = await this.databaseService.findOneExcluding(
+        'users',
+        { id: userId },
+        ['password'],
+      );
 
       if (!user) {
         throw new UnauthorizedException('User not found');
@@ -50,7 +63,11 @@ export class UsersService {
         updated_at: user.updated_at,
       };
     } catch (error) {
-      console.error('Get user error:', error);
+      this.loggerService.error(
+        'Failed to get user profile',
+        error,
+        'UsersService.getMe',
+      );
       throw new UnauthorizedException('Invalid token');
     }
   }
@@ -75,8 +92,7 @@ export class UsersService {
       if (updateDto.name) updateFields.name = updateDto.name;
       if (updateDto.gender) updateFields.gender = updateDto.gender;
 
-      // Add updated timestamp
-      updateFields.updated_at = new Date();
+      // Note: updated_at is automatically set by database trigger
 
       // Update user
       const updatedUser = await this.databaseService.updateOne(
@@ -98,7 +114,11 @@ export class UsersService {
         },
       };
     } catch (error) {
-      console.error('Update user error:', error);
+      this.loggerService.error(
+        'Failed to update user profile',
+        error,
+        'UsersService.updateMe',
+      );
       if (error instanceof UnauthorizedException) {
         throw error;
       }
@@ -106,27 +126,36 @@ export class UsersService {
     }
   }
 
-  async getAllUsers() {
+  async getAllUsers(): Promise<{
+    message: string;
+    users: UserWithoutPassword[];
+  }> {
     try {
       const users = await this.databaseService.query(
-        'SELECT id, email, name, phone, gender, created_at, updated_at FROM users ORDER BY created_at DESC',
+        'SELECT id, email, name, phone, gender, role, created_at, updated_at FROM users ORDER BY created_at DESC',
       );
 
       return {
         message: 'Users retrieved successfully',
-        data: users,
+        users: users as UserWithoutPassword[],
       };
     } catch (error) {
-      console.error('Get all users error:', error);
+      this.loggerService.error(
+        'Failed to retrieve all users',
+        error,
+        'UsersService.getAllUsers',
+      );
       throw new InternalServerErrorException('Failed to retrieve users');
     }
   }
 
   async getUserById(id: string) {
     try {
-      const user = await this.databaseService.findOne('users', {
-        id: parseInt(id),
-      });
+      const user = await this.databaseService.findOneExcluding(
+        'users',
+        { id: parseInt(id) },
+        ['password'],
+      );
 
       if (!user) {
         throw new NotFoundException('User not found');
@@ -145,7 +174,11 @@ export class UsersService {
         },
       };
     } catch (error) {
-      console.error('Get user by ID error:', error);
+      this.loggerService.error(
+        'Failed to retrieve user by ID',
+        error,
+        'UsersService.getUserById',
+      );
       if (error instanceof NotFoundException) {
         throw error;
       }
@@ -164,14 +197,22 @@ export class UsersService {
         throw new UnauthorizedException('User already exists with this email');
       }
 
+      // Ensure password is provided
+      if (!dto.password) {
+        throw new UnauthorizedException('Password is required');
+      }
+
+      // Hash password using helper method
+      const hashedPassword = await this.hashPassword(dto.password);
+
       const newUser = await this.databaseService.insertOne('users', {
         email: dto.email.toLowerCase(),
+        password: hashedPassword,
         name: dto.name || null,
         phone: dto.phone || null,
         gender: dto.gender || null,
         role: dto.role || 'user',
-        created_at: new Date(),
-        updated_at: new Date(),
+        // Note: created_at and updated_at are set by database defaults/triggers
       });
 
       return {
@@ -187,7 +228,11 @@ export class UsersService {
         },
       };
     } catch (error) {
-      console.error('Create user error:', error);
+      this.loggerService.error(
+        'Failed to create user',
+        error,
+        'UsersService.createUser',
+      );
       if (error instanceof UnauthorizedException) {
         throw error;
       }
@@ -211,7 +256,7 @@ export class UsersService {
       if (dto.name) updateFields.name = dto.name;
       if (dto.gender) updateFields.gender = dto.gender;
 
-      updateFields.updated_at = new Date();
+      // Note: updated_at is automatically set by database trigger
 
       const updatedUser = await this.databaseService.updateOne(
         'users',
@@ -231,7 +276,11 @@ export class UsersService {
         },
       };
     } catch (error) {
-      console.error('Update user by ID error:', error);
+      this.loggerService.error(
+        'Failed to update user by ID',
+        error,
+        'UsersService.updateUserById',
+      );
       if (error instanceof NotFoundException) {
         throw error;
       }
@@ -257,7 +306,11 @@ export class UsersService {
         message: 'User deleted successfully',
       };
     } catch (error) {
-      console.error('Delete user error:', error);
+      this.loggerService.error(
+        'Failed to delete user',
+        error,
+        'UsersService.deleteUserById',
+      );
       if (error instanceof NotFoundException) {
         throw error;
       }
